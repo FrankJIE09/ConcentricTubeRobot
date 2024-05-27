@@ -75,7 +75,7 @@ class CTRobotModel(object):
         # Boundary Conditions # (2)
         #U1_after=[0;0;0];                              # 1st tube initial curvature at segment beginning
         r0 = np.array([[0, 0, 0]]).transpose()
-        R0 = np.array([ [np.cos(alpha_1), np.sin(alpha_1), 0],
+        R0 = np.array([[np.cos(alpha_1), np.sin(alpha_1), 0],
                         [-np.sin(alpha_1), np.cos(alpha_1), 0],
                         [0, 0, 1] ])
         R0 = R0.reshape(9,1,order='F')  # fortran scan order  # TODO: simplify
@@ -132,8 +132,8 @@ class CTRobotModel(object):
         # second n elements of y are twist angles, alpha_i
         # last 12 elements are r (position) and R (orientations), respectively
         # calculating 1st tube's curvatures in x and y direction
-        ux = np.zeros((n,1))
-        uy = np.zeros((n,1))
+        ux = np.zeros(n)
+        uy = np.zeros(n)
 
         # calculating tube's curvatures in x and y direction
         for i in np.arange(n):  # alpha to curvature                            # 1(c)

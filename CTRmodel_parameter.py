@@ -11,12 +11,13 @@ import matplotlib.pyplot as plt
 import time
 from scipy.integrate import solve_ivp
 from mpl_toolkits import mplot3d
-
-
+from matplotlib.widgets import Slider
 ## main ode solver
-def moving_CTR(q, uz_0):
-    l = 1e-3 * np.array([431, 332, 174])  # length of tubes
-    l_k = 1e-3 * np.array([103, 113, 134])  # length of the curved part of tubes
+def moving_CTR(q, uz_0,E_values, J_values, l_values, l_k_values):
+    l = 1e-3 * np.array(l_values)
+    l_k = 1e-3 * np.array(l_k_values)
+    # E = E_values
+    # J = J_values
 
     # physical parameters
     E = np.array([6.4359738368e+10, 5.2548578304e+10, 4.7163091968e+10])  # E stiffness
@@ -26,6 +27,8 @@ def moving_CTR(q, uz_0):
 
     Ux = np.array([21.3, 13.108, 3.5])  # constant U curvature vectors for each tubes
     Uy = np.array([0, 0, 0])
+    Ux = E_values  # constant U curvature vectors for each tubes
+    Uy = J_values
     n = 3
 
     # q1 to q3 are robot base movments, q3 to q6 are robot base rotation angles.
@@ -228,34 +231,70 @@ def segmenting(E, Ux, Uy, l, B, l_k):  # -> [L,d1,E,Ux,Uy,I,G,J]
     return (L, d1, E, Ux, Uy)  # L,d1,E,Ux,Uy,I,G,J
 
 
-def plot_3D(ax, r1, r2, r3, label_str=''):
-    if len(label_str) > 1:
-        ax.plot3D(r1[:, 0], r1[:, 1], r1[:, 2], linewidth=1, label=label_str)
-    else:
-        ax.plot3D(r1[:, 0], r1[:, 1], r1[:, 2], linewidth=1)
+def plot_3D(ax, r1, r2, r3):
+    ax.plot3D(r1[:, 0], r1[:, 1], r1[:, 2], linewidth=1, label='tube1')
     ax.plot3D(r2[:, 0], r2[:, 1], r2[:, 2], linewidth=2)
     ax.plot3D(r3[:, 0], r3[:, 1], r3[:, 2], linewidth=3)
-    if len(label_str) > 1:
-        ax.scatter(r1[-1, 0], r1[-1, 1], r1[-1, 2],
-                   label='({:03f},{:03f},{:03f})'.format(r1[-1, 0], r1[-1, 1], r1[-1, 2]))
+    ax.scatter(r1[-1, 0], r1[-1, 1], r1[-1, 2], label='({:03f},{:03f},{:03f})'.format(r1[-1, 0], r1[-1, 1], r1[-1, 2]))
+    ax.legend()
 
-
-if __name__ == "__main__":
-    fig = plt.figure()
-    ax = plt.axes(projection='3d')
-
-    start_time = time.time()
-    # initial value of twist
+def update_plot(val):
+    ax.clear()
+    E_values = [E_slider1.val, E_slider2.val, E_slider3.val]
+    J_values = [J_slider1.val, J_slider2.val, J_slider3.val]
+    l_values = [l_slider1.val, l_slider2.val, l_slider3.val]
+    l_k_values = [l_k_slider1.val, l_k_slider2.val, l_k_slider3.val]
     uz_0 = np.array([[0.0, 0.0, 0.0]]).transpose()
     q = np.array([0.0001, 0.0001, 0.0001, 0.0001, 0.0001, 0.0001])  # inputs [BBBaaa]
-    (r1, r2, r3, Uz) = moving_CTR(q, uz_0)
-    # print(" Execution time: %s seconds " % (time.time() - start_time))
-    print('Uz:\n', Uz)
-    plot_3D(ax, r1, r2, r3, 'tube1')
+    (r1, r2, r3, _) = moving_CTR(q, uz_0, E_values, J_values, l_values, l_k_values)
+    plot_3D(ax, r1, r2, r3)
+    plt.draw()
 
-    ax.legend()
-    plt.show()
 
+
+
+# Create initial plot
+fig = plt.figure()
+ax = plt.axes(projection='3d')
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+
+
+slider_width =0.65
+slider_height = 0.01
+# Create sliders
+E_slider1 = Slider(plt.axes([0.1, 0.01,slider_width, slider_height]), 'E1', 0.1, 200, valinit=23)
+E_slider2 = Slider(plt.axes([0.1, 0.04,slider_width, slider_height]), 'E2', 0.1, 200, valinit=15)
+E_slider3 = Slider(plt.axes([0.1, 0.07,slider_width, slider_height]), 'E3', 0.1, 200, valinit=3)
+
+J_slider1 = Slider(plt.axes([0.1, 0.10,slider_width, slider_height]), 'J1', 0.001, 0.1, valinit=0)
+J_slider2 = Slider(plt.axes([0.1, 0.13,slider_width, slider_height]), 'J2', 0.001, 0.1, valinit=0)
+J_slider3 = Slider(plt.axes([0.1, 0.16,slider_width, slider_height]), 'J3', 0.001, 0.1, valinit=0)
+
+l_slider1 = Slider(plt.axes([0.1, 0.19,slider_width, slider_height]), 'l1', 100, 1000, valinit=431)
+l_slider2 = Slider(plt.axes([0.1, 0.22,slider_width, slider_height]), 'l2', 100, 1000, valinit=332)
+l_slider3 = Slider(plt.axes([0.1, 0.25,slider_width, slider_height]), 'l3', 100, 1000, valinit=174)
+
+l_k_slider1 = Slider(plt.axes([0.1, 0.28,slider_width, slider_height]), 'lk1', 50, 200, valinit=103)
+l_k_slider2 = Slider(plt.axes([0.1, 0.31,slider_width, slider_height]), 'lk2', 50, 200, valinit=113)
+l_k_slider3 = Slider(plt.axes([0.1, 0.34,slider_width, slider_height]), 'lk3', 50, 200, valinit=134)
+
+# Attach update function to sliders
+E_slider1.on_changed(update_plot)
+E_slider2.on_changed(update_plot)
+E_slider3.on_changed(update_plot)
+J_slider1.on_changed(update_plot)
+J_slider2.on_changed(update_plot)
+J_slider3.on_changed(update_plot)
+l_slider1.on_changed(update_plot)
+l_slider2.on_changed(update_plot)
+l_slider3.on_changed(update_plot)
+l_k_slider1.on_changed(update_plot)
+l_k_slider2.on_changed(update_plot)
+l_k_slider3.on_changed(update_plot)
+
+plt.show()
     # # uz_0 = np.array([[np.pi, np.pi, np.pi]]).transpose()
     # q = np.array([0, 0, 0, 0, np.pi, np.pi])  #inputs
     # (r1,r2,r3,Uz) = moving_CTR(q, uz_0)
