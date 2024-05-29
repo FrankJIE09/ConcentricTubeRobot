@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from matplotlib.widgets import Slider
+from matplotlib.widgets import Button
 
 
 class CTRobotModel(object):
@@ -33,13 +34,13 @@ class CTRobotModel(object):
         self.Uy = np.array(Uy)
 
     ## main ode solver
-    def moving_CTR(self, q, uz_0, Ux, Uy, l_values, l_k_values):
+    def moving_CTR(self, q, uz_0, Ux, Uy, l_values, l_k_values):  # q[0:3] 伸长量  q[3:6]绕z轴转的量
 
         self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
         self.Uy = np.array(Uy)
         self.tubes_length = 1e-3 * np.array(l_values)  # length of tubes
-        self.curve_length = self.tubes_length
-        # self.curve_length = 1e-3 * np.array(l_k_values)  # length of the curved part of tubes
+        # self.curve_length = self.tubes_length
+        self.curve_length = 1e-3 * np.array(l_k_values)  # length of the curved part of tubes
         q = np.array(q)
         uz_0 = np.array(uz_0)
 
@@ -86,7 +87,6 @@ class CTRobotModel(object):
                        [0, 0, 1]])
         R0 = R0.reshape(9, 1, order='F')  # fortran scan order  # TODO: simplify
         # alpha=alpha-B.*uz_0'
-        print(len(S))
         ## Solving ode for shape
         for seg in np.arange(len(S)):
             s_span = [span[seg], span[seg + 1] - 0.0000001]  # TODO: how was the timestep chosen?
@@ -129,7 +129,6 @@ class CTRobotModel(object):
         r3 = np.array([r[0:tube3_end, 0], r[0:tube3_end, 1], r[0:tube3_end, 2]]).transpose()
 
         return r1, r2, r3, Uz
-
 
     def ode(self, s, y, Ux, Uy, EI, GJ, n):  # dydt s>~
 
@@ -244,44 +243,138 @@ class CTRobotModel(object):
         return (L, d1, E, Ux, Uy)  # L,d1,E,Ux,Uy,I,G,J
 
 
-def update_plot(val):
+def update_plot():
     ax.clear()
-    U = np.array([E_slider1.val, E_slider2.val, E_slider3.val])
-    theta = np.array([J_slider1.val, J_slider2.val, J_slider3.val])
-    l_values = [l_slider1.val, l_slider2.val, l_slider3.val]
-    l_k_values = [l_k_slider1.val, l_k_slider2.val, l_k_slider3.val]
+    global q
+    global q_diff
+    global U
+    global theta
+    global uz_0
+    ax.set_xlabel('X [mm]')
+    ax.set_ylabel('Y [mm]')
+    ax.set_zlabel('Z [mm]')
 
-    uz_0 = np.array([uz_slider1.val, uz_slider2.val, uz_slider3.val])  # 控制旋转角度的即\pha，不是扭转角度
+    l_values = [431, 332, 174]
+    l_k_values = [100, 332, 174]
 
-    # uz_0 = np.array([np.pi, 0.0, 0.0])  # .transpose()
-    # # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
-    q = np.array([0, 0, 0, 0, 0, 0])  # inputs [BBBaaa]
+
+    # q is defined within the loop below
 
     (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values, l_k_values)
+    jac = np.zeros((3, 12))
+    r = r1[-1, :].copy()
+    eps = 1.e-4
+    for i in range(0, 3):
+        q[i] = q[i] + eps
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
+                                                     l_k_values)
+        r_perturb = (new_r1[-1, :] - r) / eps
+        jac[:, i] = r_perturb.reshape(3, )
+        q[i] = q[i] - eps
+    for i in range(3, 6):
+        U[i-3] = U[i-3]+ eps
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
+                                                     l_k_values)
+        r_perturb = (new_r1[-1, :] - r) / eps
+        jac[:, i] = r_perturb.reshape(3, )
+        U[i-3] = U[i-3] - eps
+    for i in range(6, 9):
+        theta[i-6] = theta[i-6]+ eps
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
+                                                     l_k_values)
+        r_perturb = (new_r1[-1, :] - r) / eps
+        jac[:, i] = r_perturb.reshape(3, )
+        theta[i-6] = theta[i-6] - eps
+
+    for i in range(9, 12):
+        uz_0[i-9] = uz_0[i-9]+ eps
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
+                                                     l_k_values)
+        r_perturb = (new_r1[-1, :] - r) / eps
+        jac[:, i] = r_perturb.reshape(3, )
+        uz_0[i-9] = uz_0[i-9] - eps
+    print(px, py, pz)
+    diff_res = np.linalg.pinv(jac) @ np.array([px, py, pz])
+    q[0:3] = q[0:3] + diff_res[0:3]
+    U = U + diff_res[3:6]
+    theta = theta + diff_res[6:9]
+    uz_0 = uz_0 + diff_res[9:12]
+    # print(q_diff)
+    print("####################")
+    print(r1[-1, :])
     ax.set_box_aspect([1, 1, 1])
     # 设置绘图区间
     ax.set_xlim([-0.2, 0.2])
     ax.set_ylim([-0.2, 0.2])
     ax.set_zlim([-0.1, 0.3])
     ax.plot3D(r1[:, 0], r1[:, 1], r1[:, 2], linewidth=1, label='tube1')
-    ax.plot3D(r2[:, 0], r2[:, 1], r2[:, 2], linewidth=2)
-    ax.plot3D(r3[:, 0], r3[:, 1], r3[:, 2], linewidth=3)
+    ax.plot3D(r2[:, 0], r2[:, 1], r2[:, 2], linewidth=2, label='tube2')
+    ax.plot3D(r3[:, 0], r3[:, 1], r3[:, 2], linewidth=3, label='tube3')
     ax.scatter(r1[-1, 0], r1[-1, 1], r1[-1, 2],
                label='({:03f},{:03f},{:03f})'.format(r1[-1, 0], r1[-1, 1], r1[-1, 2]))
     ax.legend()
     plt.draw()
 
 
-uz_0 = np.array([0.0, 0.0, 0.0])  # .transpose()
-# # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
-q = np.array([.2, 0, 0, np.pi, np.pi, 0])  # inputs [BBBaaa]
+# 定义步进大小
+step_size = 0.01
 
+
+# 按钮回调函数
+def update_px_plus(event):
+    global px, py, pz
+    px = step_size
+    update_plot()
+
+
+def update_px_minus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    px = -step_size
+    update_plot()
+
+
+def update_py_plus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    py = step_size
+    update_plot()
+
+
+def update_py_minus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    py = -step_size
+    update_plot()
+
+
+def update_pz_plus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    pz = step_size
+    update_plot()
+
+
+def update_pz_minus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    pz = -step_size
+    update_plot()
+
+
+px, py, pz = 0., 0., 0.
+
+uz_0 = np.array([0, 0, 0], dtype=float)
+# # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
+q = np.array([0, 0, 0, 0, 0, 0], dtype="float")
 # no_of_tubes = 3  # ONLY MADE FOR 3 TUBES for now
 initial_q = [-0.2858, -0.2025, -0.0945, 0, 0, 0]
 tubes_length = [431, 332, 174]
 curve_length = [103, 113, 134]
 tubes_length = 1e-3 * np.array(tubes_length)  # length of tubes
 curve_length = 1e-3 * np.array(curve_length)  # length of the curved part of tubes
+U = np.array([23, 15, 3], dtype=float)
+theta = np.array([0, 0, 0], dtype=float)
 
 # physical parameters
 E = np.array([6.4359738368e+10, 5.2548578304e+10, 4.7163091968e+10])  # E stiffness
@@ -294,12 +387,10 @@ Uy = np.array([0, 0, 0])
 
 ctr = CTRobotModel(3, tubes_length, curve_length, initial_q, E, J, I, G, Ux, Uy)
 
-
 # Create initial plot
 fig = plt.figure()
 ax = fig.add_subplot(121, projection='3d')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
+
 ax.view_init(elev=30, azim=45)
 # Move the 3D plot to the right
 pos = ax.get_position()
@@ -310,43 +401,24 @@ slider_height = 0.02
 top = pos.y0 + 0.6
 a = 0.03
 left = pos.x0 + 0.4
-# Create sliders
-E_slider1 = Slider(plt.axes([left, top - 1 * a, slider_width, slider_height]), 'U1', 0.1, 200, valinit=23)
-E_slider2 = Slider(plt.axes([left, top - 2 * a, slider_width, slider_height]), 'U2', 0.1, 200, valinit=15)
-E_slider3 = Slider(plt.axes([left, top - 3 * a, slider_width, slider_height]), 'U3', 0.1, 200, valinit=3)
 
-J_slider1 = Slider(plt.axes([left, top - 4 * a, slider_width, slider_height]), 'theta1', 0, 2 * np.pi, valinit=0)
-J_slider2 = Slider(plt.axes([left, top - 5 * a, slider_width, slider_height]), 'theta2', 0, 2 * np.pi, valinit=0)
-J_slider3 = Slider(plt.axes([left, top - 6 * a, slider_width, slider_height]), 'theta3', 0, 2 * np.pi, valinit=0)
+# 创建按钮
+button_px_plus = Button(plt.axes([0.6, 0.8, 0.1, 0.1]), '+px')
+button_px_plus.on_clicked(update_px_plus)
 
-l_slider1 = Slider(plt.axes([left, top - 7 * a, slider_width, slider_height]), 'l1', 100, 1000, valinit=431)
-l_slider2 = Slider(plt.axes([left, top - 8 * a, slider_width, slider_height]), 'l2', 100, 1000, valinit=332)
-l_slider3 = Slider(plt.axes([left, top - 9 * a, slider_width, slider_height]), 'l3', 100, 1000, valinit=174)
+button_px_minus = Button(plt.axes([0.75, 0.8, 0.1, 0.1]), '-px')
+button_px_minus.on_clicked(update_px_minus)
 
-l_k_slider1 = Slider(plt.axes([left, top - 10 * a, slider_width, slider_height]), 'lk1', 50, 1000, valinit=103)
-l_k_slider2 = Slider(plt.axes([left, top - 11 * a, slider_width, slider_height]), 'lk2', 50, 1000, valinit=113)
-l_k_slider3 = Slider(plt.axes([left, top - 12 * a, slider_width, slider_height]), 'lk3', 50, 1000, valinit=134)
+button_py_plus = Button(plt.axes([0.6, 0.65, 0.1, 0.1]), '+py')
+button_py_plus.on_clicked(update_py_plus)
 
-uz_slider1 = Slider(plt.axes([left, top - 13 * a, slider_width, slider_height]), 'uz1', 0, np.pi * 2, valinit=0)
-uz_slider2 = Slider(plt.axes([left, top - 14 * a, slider_width, slider_height]), 'uz2', 0, np.pi * 2, valinit=0)
-uz_slider3 = Slider(plt.axes([left, top - 15 * a, slider_width, slider_height]), 'uz3', 0, np.pi * 2, valinit=0)
+button_py_minus = Button(plt.axes([0.75, 0.65, 0.1, 0.1]), '-py')
+button_py_minus.on_clicked(update_py_minus)
 
-# Attach update function to sliders
-E_slider1.on_changed(update_plot)
-E_slider2.on_changed(update_plot)
-E_slider3.on_changed(update_plot)
-J_slider1.on_changed(update_plot)
-J_slider2.on_changed(update_plot)
-J_slider3.on_changed(update_plot)
-l_slider1.on_changed(update_plot)
-l_slider2.on_changed(update_plot)
-l_slider3.on_changed(update_plot)
-l_k_slider1.on_changed(update_plot)
-l_k_slider2.on_changed(update_plot)
-l_k_slider3.on_changed(update_plot)
+button_pz_plus = Button(plt.axes([0.6, 0.5, 0.1, 0.1]), '+pz')
+button_pz_plus.on_clicked(update_pz_plus)
 
-uz_slider1.on_changed(update_plot)
-uz_slider2.on_changed(update_plot)
-uz_slider3.on_changed(update_plot)
+button_pz_minus = Button(plt.axes([0.75, 0.5, 0.1, 0.1]), '-pz')
+button_pz_minus.on_clicked(update_pz_minus)
 
 plt.show()
