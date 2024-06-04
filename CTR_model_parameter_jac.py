@@ -34,13 +34,13 @@ class CTRobotModel(object):
         self.Uy = np.array(Uy)
 
     ## main ode solver
-    def moving_CTR(self, q, uz_0, Ux, Uy, l_values, l_k_values):  # q[0:3] 伸长量  q[3:6]绕z轴转的量
+    def moving_CTR(self, q, uz_0, Ux, Uy):  # q[0:3] 伸长量  q[3:6]绕z轴转的量
 
         self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
         self.Uy = np.array(Uy)
-        self.tubes_length = 1e-3 * np.array(l_values)  # length of tubes
+        self.tubes_length = tubes_length  # length of tubes
         # self.curve_length = self.tubes_length
-        self.curve_length = 1e-3 * np.array(l_k_values)  # length of the curved part of tubes
+        self.curve_length = curve_length  # length of the curved part of tubes
         q = np.array(q)
         uz_0 = np.array(uz_0)
 
@@ -254,51 +254,42 @@ def update_plot():
     ax.set_ylabel('Y [mm]')
     ax.set_zlabel('Z [mm]')
 
-    l_values = [431, 332, 174]
-    l_k_values = [100, 332, 174]
-
-
     # q is defined within the loop below
 
-    (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values, l_k_values)
+    (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
     jac = np.zeros((3, 12))
     r = r1[-1, :].copy()
     eps = 1.e-4
     for i in range(0, 3):
         q[i] = q[i] + eps
-        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
-                                                     l_k_values)
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), )
         r_perturb = (new_r1[-1, :] - r) / eps
         jac[:, i] = r_perturb.reshape(3, )
         q[i] = q[i] - eps
     for i in range(3, 6):
-        U[i-3] = U[i-3]+ eps
-        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
-                                                     l_k_values)
+        U[i - 3] = U[i - 3] + eps
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), )
         r_perturb = (new_r1[-1, :] - r) / eps
         jac[:, i] = r_perturb.reshape(3, )
-        U[i-3] = U[i-3] - eps
+        U[i - 3] = U[i - 3] - eps
     for i in range(6, 9):
-        theta[i-6] = theta[i-6]+ eps
-        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
-                                                     l_k_values)
+        theta[i - 6] = theta[i - 6] + eps
+        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), )
         r_perturb = (new_r1[-1, :] - r) / eps
         jac[:, i] = r_perturb.reshape(3, )
-        theta[i-6] = theta[i-6] - eps
+        theta[i - 6] = theta[i - 6] - eps
 
-    for i in range(9, 12):
-        uz_0[i-9] = uz_0[i-9]+ eps
-        (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), l_values,
-                                                     l_k_values)
-        r_perturb = (new_r1[-1, :] - r) / eps
-        jac[:, i] = r_perturb.reshape(3, )
-        uz_0[i-9] = uz_0[i-9] - eps
     print(px, py, pz)
-    diff_res = np.linalg.pinv(jac) @ np.array([px, py, pz])
+    Lambda = 0.1  # 阻尼因子
+    # 计算 (JT J + Λ^2 I) 的逆矩阵
+    JTJ = np.dot(jac.T, jac)
+    Lambda2I = Lambda ** 2 * np.eye(jac.shape[1])
+    inverse_term = np.linalg.inv(JTJ + Lambda2I)
+    diff_res = inverse_term @ jac.T @ np.array([px, py, pz])
     q[0:3] = q[0:3] + diff_res[0:3]
     U = U + diff_res[3:6]
     theta = theta + diff_res[6:9]
-    uz_0 = uz_0 + diff_res[9:12]
+    # uz_0 = uz_0 + diff_res[9:12]
     # print(q_diff)
     print("####################")
     print(r1[-1, :])
@@ -323,6 +314,7 @@ step_size = 0.01
 # 按钮回调函数
 def update_px_plus(event):
     global px, py, pz
+    px, py, pz = 0., 0., 0.
     px = step_size
     update_plot()
 
@@ -363,18 +355,17 @@ def update_pz_minus(event):
 
 
 px, py, pz = 0., 0., 0.
-
 uz_0 = np.array([0, 0, 0], dtype=float)
 # # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
 q = np.array([0, 0, 0, 0, 0, 0], dtype="float")
 # no_of_tubes = 3  # ONLY MADE FOR 3 TUBES for now
-initial_q = [-0.2858, -0.2025, -0.0945, 0, 0, 0]
-tubes_length = [431, 332, 174]
-curve_length = [103, 113, 134]
+initial_q = [-0.950, -0.85, -0.51, 0, 0, 0]
+tubes_length = [1350, 1200, 810]
+curve_length = [0, 40, 55]
 tubes_length = 1e-3 * np.array(tubes_length)  # length of tubes
 curve_length = 1e-3 * np.array(curve_length)  # length of the curved part of tubes
-U = np.array([23, 15, 3], dtype=float)
-theta = np.array([0, 0, 0], dtype=float)
+U = np.array([20, 15, 3], dtype=float)
+theta = np.array([0, 0, np.pi / 6], dtype=float)
 
 # physical parameters
 E = np.array([6.4359738368e+10, 5.2548578304e+10, 4.7163091968e+10])  # E stiffness
@@ -382,7 +373,7 @@ J = 1.0e-11 * np.array([0.0120, 0.0653, 0.1686])  # J second moment of inertia
 I = 1.0e-12 * np.array([0.0601, 0.3267, 0.8432])  # I inertia
 G = np.array([2.5091302912e+10, 2.1467424256e+10, 2.9788923392e+10])  # G torsion constant
 
-Ux = np.array([21.3, 13.108, 3.5])  # constant U curvature vectors for each tubes
+Ux = np.array([21, 13, 3])  # constant U curvature vectors for each tubes
 Uy = np.array([0, 0, 0])
 
 ctr = CTRobotModel(3, tubes_length, curve_length, initial_q, E, J, I, G, Ux, Uy)

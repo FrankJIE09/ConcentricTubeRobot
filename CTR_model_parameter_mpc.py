@@ -11,17 +11,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
 from matplotlib.widgets import Slider
+from matplotlib.widgets import Button
+from scipy.optimize import minimize
+
 
 
 class CTRobotModel(object):
-
-    def __init__(self, no_of_tubes, tubes_Length, curve_Length, initial_q=[],
-                 E=[], J=[], I=[], G=[], Ux=[], Uy=[]):
-
+    def __init__(self, no_of_tubes, tubes_length, curve_length, initial_q,
+                 E, J, I, G, Ux, Uy):
         self.n = no_of_tubes
-        self.tubes_length = np.array(tubes_Length)  # length of tubes
-        self.curve_length = np.array(curve_Length)  # length of the curved part of tubes
+        self.tubes_length = np.array(tubes_length)  # length of tubes
+        self.curve_length = np.array(curve_length)  # length of the curved part of tubes
         self.q_0 = np.array(initial_q)  # [BBBaaa]
+        # self.x_d = np.array(x_d)
+        # self.accuracy = Tol
 
         # physical parameters
         self.E = np.array(E)  # E stiffness
@@ -32,13 +35,19 @@ class CTRobotModel(object):
         self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
         self.Uy = np.array(Uy)
 
+        self.r = np.zeros(3)
+
     ## main ode solver
-    def moving_CTR(self, q, uz_0, Ux, Uy):
+    def moving_CTR(self, q, uz_0, Ux, Uy):  # q[0:3] 伸长量  q[3:6]绕z轴转的量
+
         self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
         self.Uy = np.array(Uy)
+        self.tubes_length = tubes_length  # length of tubes
+        # self.curve_length = self.tubes_length
+        self.curve_length = curve_length  # length of the curved part of tubes
         q = np.array(q)
-        print(q)
         uz_0 = np.array(uz_0)
+
         # q1 to q3 are robot base movments, q3 to q6 are robot base rotation angles.
         uz0 = uz_0.copy()  # TODO: uz_0 column check
         B = q[:self.n] + self.q_0[:self.n]  # length of tubes before template
@@ -55,6 +64,7 @@ class CTRobotModel(object):
         for i in np.arange(len(L)):
             SS[i] = np.sum(L[:i + 1])  # Total length to each segments
         # 则SS里的分别是tube1,2,3起点的位置，预弯折的位置，末端位置及出口位置（即0）从最小位置到他们位置的差（最小到最大排序），最小值被省去
+        #     plot((B(1)+SS(i))*ones(1,10),1:10,'b' ,'LineWidth',2)
 
         # S is segmented abssica of tube after template (removes -'s after translations)
         # S中的长度都是大于0的但的长度
@@ -121,7 +131,7 @@ class CTRobotModel(object):
         r2 = np.array([r[0:tube2_end, 0], r[0:tube2_end, 1], r[0:tube2_end, 2]]).transpose()
         tube3_end = np.argmin(np.abs(Length - d_tip[2]))
         r3 = np.array([r[0:tube3_end, 0], r[0:tube3_end, 1], r[0:tube3_end, 2]]).transpose()
-
+        self.r = r1[-1, :]
         return r1, r2, r3, Uz
 
     def ode(self, s, y, Ux, Uy, EI, GJ, n):  # dydt s>~
@@ -234,50 +244,144 @@ class CTRobotModel(object):
             Uy[i, :] = UUy[i, ~(L == 0)]
         L = L[np.nonzero(L)]  # (~(L==0))
 
-        return (L, d1, E, Ux, Uy)  # L,d1,E,Ux,Uy,I,G,J
+        return L, d1, E, Ux, Uy # L,d1,E,Ux,Uy,I,G,J
+        # 解决MPC问题
+        # 估算成本函数的雅可比矩阵
+
+    def cost(self, q,uz_0, Ux, Uy):
+        self.moving_CTR(q, uz_0, Ux, Uy)
+        Error = 1000 * (self.r[-1, :].reshape(3, 1) - self.x_d.reshape(3, 1))
+        C = np.sum((Error.T @ Error), axis=0)
+        return C
+
+    def jac(self, q):
+        jac = np.zeros((4,))
+        r = self.cost(q)
+        for i in range(0, 4):
+            q[i] = q[i] + self.eps
+            r_perturb = (self.cost(q) - r) / self.eps
+            jac[i] = r_perturb.reshape(1, )
+            q[i] = q[i] - self.eps
+        return jac
+
+    def minimize(self, q_init, q):
+        eps = 0.0001
+        # 限制条件
+        ineq_cons = {'type': 'ineq',
+                     'fun': lambda q: np.array([-q[0] - q_init[0] - eps,
+                                                -q[1] - q_init[1] - eps,
+                                                q[0] + q_init[0] + 0.4 - eps,
+                                                q[1] + q_init[1] + 0.3,
+                                                q_init[1] - q_init[0] - eps - q[0] + q[1]]),
+                     'jac': lambda q: np.array([[-1.0, 0, 0, 0],
+                                                [0, -1.0, 0, 0],
+                                                [1.0, 0.0, 0, 0],
+                                                [0.0, 1.0, 0, 0],
+                                                [-1.0, 1.0, 0, 0]])}
+        # r = r1[-1, :].copy()
+        # r_d_array = np.array([[r[0] + px, r[1] + py, r[2] + pz]])
+        res = minimize(self.cost, q, method='SLSQP', jac=self.jac,
+                       constraints=ineq_cons, options={'ftol': 0.75e-3})
 
 
-def update_plot(val):
+def update_plot():
     ax.clear()
     global q
     global q_diff
     global U
     global theta
     global uz_0
-    global plc
+    global r
+    global initial_q
+    ax.set_xlabel('X [mm]')
+    ax.set_ylabel('Y [mm]')
+    ax.set_zlabel('Z [mm]')
 
-    # uz_0 = np.array([uz_slider1.val, uz_slider2.val, uz_slider3.val])  # 控制旋转角度的即\pha，不是扭转角度
-    q[0:3] = np.array([q_slider1.val / 1000, q_slider2.val / 1000, q_slider3.val / 1000])
-    U = np.array([U_slider1.val, U_slider2.val, U_slider3.val])
-    theta = np.array([theta_slider1.val, theta_slider2.val, theta_slider3.val])
-    # uz_0 = np.array([np.pi, 0.0, 0.0])  # .transpose()
-    # # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
+    # q is defined within the loop below
 
-    (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
+    # (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
+    # r = r1[-1, :].copy()
+    # r_d_array = np.array([[r[0] + px, r[1] + py, r[2] + pz]])
+    ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
+    q = ctr.minimize(initial_q, q,)
+    # print(q_diff)
+    print("####################")
+    # print(r1[-1, :])
     ax.set_box_aspect([1, 1, 1])
     # 设置绘图区间
     ax.set_xlim([-0.2, 0.2])
     ax.set_ylim([-0.2, 0.2])
     ax.set_zlim([-0.1, 0.3])
     ax.plot3D(r1[:, 0], r1[:, 1], r1[:, 2], linewidth=1, label='tube1')
-    ax.plot3D(r2[:, 0], r2[:, 1], r2[:, 2], linewidth=2)
-    ax.plot3D(r3[:, 0], r3[:, 1], r3[:, 2], linewidth=3)
+    ax.plot3D(r2[:, 0], r2[:, 1], r2[:, 2], linewidth=2, label='tube2')
+    ax.plot3D(r3[:, 0], r3[:, 1], r3[:, 2], linewidth=3, label='tube3')
     ax.scatter(r1[-1, 0], r1[-1, 1], r1[-1, 2],
                label='({:03f},{:03f},{:03f})'.format(r1[-1, 0], r1[-1, 1], r1[-1, 2]))
     ax.legend()
     plt.draw()
 
 
-uz_0 = np.array([0.0, 0.0, 0.0])  # .transpose()
-# # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
-q = np.array([0, 0, 0, 0, 0, 0], dtype=float)  # inputs [BBBaaa]
+# 定义步进大小
+step_size = 0.01
 
+r = [0, 0, 0]
+
+
+# 按钮回调函数
+def update_px_plus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    px = step_size
+    update_plot()
+
+
+def update_px_minus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    px = -step_size
+    update_plot()
+
+
+def update_py_plus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    py = step_size
+    update_plot()
+
+
+def update_py_minus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    py = -step_size
+    update_plot()
+
+
+def update_pz_plus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    pz = step_size
+    update_plot()
+
+
+def update_pz_minus(event):
+    global px, py, pz
+    px, py, pz = 0., 0., 0.
+    pz = -step_size
+    update_plot()
+
+
+px, py, pz = 0., -0.048334, 0.384446
+uz_0 = np.array([0, 0, 0], dtype=float)
+# # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
+q = np.array([0, 0, 0, 0, 0, 0], dtype="float")
 # no_of_tubes = 3  # ONLY MADE FOR 3 TUBES for now
 initial_q = [-0.950, -0.85, -0.51, 0, 0, 0]
 tubes_length = [1350, 1200, 810]
-curve_length = [30, 40, 55]
+curve_length = [0, 40, 55]
 tubes_length = 1e-3 * np.array(tubes_length)  # length of tubes
 curve_length = 1e-3 * np.array(curve_length)  # length of the curved part of tubes
+U = np.array([20, 15, 3], dtype=float)
+theta = np.array([0, 0, np.pi / 6], dtype=float)
 
 # physical parameters
 E = np.array([6.4359738368e+10, 5.2548578304e+10, 4.7163091968e+10])  # E stiffness
@@ -285,7 +389,7 @@ J = 1.0e-11 * np.array([0.0120, 0.0653, 0.1686])  # J second moment of inertia
 I = 1.0e-12 * np.array([0.0601, 0.3267, 0.8432])  # I inertia
 G = np.array([2.5091302912e+10, 2.1467424256e+10, 2.9788923392e+10])  # G torsion constant
 
-Ux = np.array([21.3, 13.108, 3.5])  # constant U curvature vectors for each tubes
+Ux = np.array([21, 13, 3])  # constant U curvature vectors for each tubes
 Uy = np.array([0, 0, 0])
 
 ctr = CTRobotModel(3, tubes_length, curve_length, initial_q, E, J, I, G, Ux, Uy)
@@ -293,8 +397,7 @@ ctr = CTRobotModel(3, tubes_length, curve_length, initial_q, E, J, I, G, Ux, Uy)
 # Create initial plot
 fig = plt.figure()
 ax = fig.add_subplot(121, projection='3d')
-ax.set_ylabel('Y')
-ax.set_zlabel('Z')
+
 ax.view_init(elev=30, azim=45)
 # Move the 3D plot to the right
 pos = ax.get_position()
@@ -305,36 +408,24 @@ slider_height = 0.02
 top = pos.y0 + 0.6
 a = 0.03
 left = pos.x0 + 0.4
-# Create sliders
-U_slider1 = Slider(plt.axes([left, top - 1 * a, slider_width, slider_height]), 'U1', 0, 100, valinit=0)
-U_slider2 = Slider(plt.axes([left, top - 2 * a, slider_width, slider_height]), 'U2', 0, 100, valinit=0)
-U_slider3 = Slider(plt.axes([left, top - 3 * a, slider_width, slider_height]), 'U3', 0, 100, valinit=0)
 
-theta_slider1 = Slider(plt.axes([left, top - 4 * a, slider_width, slider_height]), 'theta1', 0, 2 * np.pi, valinit=0)
-theta_slider2 = Slider(plt.axes([left, top - 5 * a, slider_width, slider_height]), 'theta2', 0, 2 * np.pi, valinit=0)
-theta_slider3 = Slider(plt.axes([left, top - 6 * a, slider_width, slider_height]), 'theta3', 0, 2 * np.pi, valinit=0)
+# 创建按钮
+button_px_plus = Button(plt.axes([0.6, 0.8, 0.1, 0.1]), '+px')
+button_px_plus.on_clicked(update_px_plus)
 
-q_slider1 = Slider(plt.axes([left, top - 7 * a, slider_width, slider_height]), 'q1', 0, 300, valinit=0)
-q_slider2 = Slider(plt.axes([left, top - 8 * a, slider_width, slider_height]), 'q2', 0, 300, valinit=0)
-q_slider3 = Slider(plt.axes([left, top - 9 * a, slider_width, slider_height]), 'q3', 0, 300, valinit=0)
+button_px_minus = Button(plt.axes([0.75, 0.8, 0.1, 0.1]), '-px')
+button_px_minus.on_clicked(update_px_minus)
 
-# uz_slider1 = Slider(plt.axes([left, top - 13 * a, slider_width, slider_height]), 'uz1', 0, np.pi * 2, valinit=0)
-# uz_slider2 = Slider(plt.axes([left, top - 14 * a, slider_width, slider_height]), 'uz2', 0, np.pi * 2, valinit=0)
-# uz_slider3 = Slider(plt.axes([left, top - 15 * a, slider_width, slider_height]), 'uz3', 0, np.pi * 2, valinit=0)
+button_py_plus = Button(plt.axes([0.6, 0.65, 0.1, 0.1]), '+py')
+button_py_plus.on_clicked(update_py_plus)
 
-# Attach update function to sliders
-U_slider1.on_changed(update_plot)
-U_slider2.on_changed(update_plot)
-U_slider3.on_changed(update_plot)
-theta_slider1.on_changed(update_plot)
-theta_slider2.on_changed(update_plot)
-theta_slider3.on_changed(update_plot)
-q_slider1.on_changed(update_plot)
-q_slider2.on_changed(update_plot)
-q_slider3.on_changed(update_plot)
+button_py_minus = Button(plt.axes([0.75, 0.65, 0.1, 0.1]), '-py')
+button_py_minus.on_clicked(update_py_minus)
 
-# uz_slider1.on_changed(update_plot)
-# uz_slider2.on_changed(update_plot)
-# uz_slider3.on_changed(update_plot)
+button_pz_plus = Button(plt.axes([0.6, 0.5, 0.1, 0.1]), '+pz')
+button_pz_plus.on_clicked(update_pz_plus)
+
+button_pz_minus = Button(plt.axes([0.75, 0.5, 0.1, 0.1]), '-pz')
+button_pz_minus.on_clicked(update_pz_minus)
 
 plt.show()

@@ -247,7 +247,7 @@ def update_plot(val):
     global plc
 
     # uz_0 = np.array([uz_slider1.val, uz_slider2.val, uz_slider3.val])  # 控制旋转角度的即\pha，不是扭转角度
-    q[0:3] = np.array([q_slider1.val / 1000, q_slider2.val / 1000, q_slider3.val / 1000])
+    q[0:3] = np.array([q_slider1.val/1000, q_slider2.val/1000, q_slider3.val/1000])
     U = np.array([U_slider1.val, U_slider2.val, U_slider3.val])
     theta = np.array([theta_slider1.val, theta_slider2.val, theta_slider3.val])
     # uz_0 = np.array([np.pi, 0.0, 0.0])  # .transpose()
@@ -267,15 +267,14 @@ def update_plot(val):
     ax.legend()
     plt.draw()
 
-
 uz_0 = np.array([0.0, 0.0, 0.0])  # .transpose()
 # # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
-q = np.array([0, 0, 0, 0, 0, 0], dtype=float)  # inputs [BBBaaa]
+q = np.array([0, 0, 0, 0, 0, 0],dtype=float)  # inputs [BBBaaa]
 
 # no_of_tubes = 3  # ONLY MADE FOR 3 TUBES for now
 initial_q = [-0.950, -0.85, -0.51, 0, 0, 0]
 tubes_length = [1350, 1200, 810]
-curve_length = [30, 40, 55]
+curve_length = [0, 40, 55]
 tubes_length = 1e-3 * np.array(tubes_length)  # length of tubes
 curve_length = 1e-3 * np.array(curve_length)  # length of the curved part of tubes
 
