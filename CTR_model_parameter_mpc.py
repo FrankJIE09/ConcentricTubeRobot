@@ -15,7 +15,6 @@ from matplotlib.widgets import Button
 from scipy.optimize import minimize
 
 
-
 class CTRobotModel(object):
     def __init__(self, no_of_tubes, tubes_length, curve_length, initial_q,
                  E, J, I, G, Ux, Uy):
@@ -23,7 +22,8 @@ class CTRobotModel(object):
         self.tubes_length = np.array(tubes_length)  # length of tubes
         self.curve_length = np.array(curve_length)  # length of the curved part of tubes
         self.q_0 = np.array(initial_q)  # [BBBaaa]
-        # self.x_d = np.array(x_d)
+        self.x_d = np.array([-0.01, -0.03190973, 0.3805521])
+        # print(np.array([px, py, pz]))
         # self.accuracy = Tol
 
         # physical parameters
@@ -34,20 +34,17 @@ class CTRobotModel(object):
 
         self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
         self.Uy = np.array(Uy)
-
+        self.init_U = self.Ux
         self.r = np.zeros(3)
 
     ## main ode solver
-    def moving_CTR(self, q, uz_0, Ux, Uy):  # q[0:3] 伸长量  q[3:6]绕z轴转的量
-
-        self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
-        self.Uy = np.array(Uy)
-        self.tubes_length = tubes_length  # length of tubes
-        # self.curve_length = self.tubes_length
-        self.curve_length = curve_length  # length of the curved part of tubes
+    def moving_CTR(self, q):  # q[0:3] 伸长量  q[3:6]绕z轴转的量
+        # self.Ux = np.array(Ux)  # constant U curvature vectors for each tubes
+        # self.Uy = np.array(Uy)
         q = np.array(q)
-        uz_0 = np.array(uz_0)
-
+        uz_0 = np.zeros(3)
+        self.Ux = self.init_U * np.cos(q[3:])
+        self.Uy = self.init_U * np.sin(q[3:])
         # q1 to q3 are robot base movments, q3 to q6 are robot base rotation angles.
         uz0 = uz_0.copy()  # TODO: uz_0 column check
         B = q[:self.n] + self.q_0[:self.n]  # length of tubes before template
@@ -131,7 +128,7 @@ class CTRobotModel(object):
         r2 = np.array([r[0:tube2_end, 0], r[0:tube2_end, 1], r[0:tube2_end, 2]]).transpose()
         tube3_end = np.argmin(np.abs(Length - d_tip[2]))
         r3 = np.array([r[0:tube3_end, 0], r[0:tube3_end, 1], r[0:tube3_end, 2]]).transpose()
-        self.r = r1[-1, :]
+        self.r = r1
         return r1, r2, r3, Uz
 
     def ode(self, s, y, Ux, Uy, EI, GJ, n):  # dydt s>~
@@ -244,20 +241,21 @@ class CTRobotModel(object):
             Uy[i, :] = UUy[i, ~(L == 0)]
         L = L[np.nonzero(L)]  # (~(L==0))
 
-        return L, d1, E, Ux, Uy # L,d1,E,Ux,Uy,I,G,J
-        # 解决MPC问题
-        # 估算成本函数的雅可比矩阵
+        return L, d1, E, Ux, Uy  # L,d1,E,Ux,Uy,I,G,J
 
-    def cost(self, q,uz_0, Ux, Uy):
-        self.moving_CTR(q, uz_0, Ux, Uy)
+    # 解决MPC问题
+    # 估算成本函数的雅可比矩阵
+    def cost(self, q):
+        self.moving_CTR(q, )
         Error = 1000 * (self.r[-1, :].reshape(3, 1) - self.x_d.reshape(3, 1))
         C = np.sum((Error.T @ Error), axis=0)
         return C
 
     def jac(self, q):
-        jac = np.zeros((4,))
+        self.eps = 1e-4
+        jac = np.zeros((6,))
         r = self.cost(q)
-        for i in range(0, 4):
+        for i in range(0, 6):
             q[i] = q[i] + self.eps
             r_perturb = (self.cost(q) - r) / self.eps
             jac[i] = r_perturb.reshape(1, )
@@ -281,7 +279,9 @@ class CTRobotModel(object):
         # r = r1[-1, :].copy()
         # r_d_array = np.array([[r[0] + px, r[1] + py, r[2] + pz]])
         res = minimize(self.cost, q, method='SLSQP', jac=self.jac,
-                       constraints=ineq_cons, options={'ftol': 0.75e-3})
+                       options={'ftol': 0.75e-3})
+        if res.success:
+            return self.moving_CTR(res.x)
 
 
 def update_plot():
@@ -302,8 +302,8 @@ def update_plot():
     # (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
     # r = r1[-1, :].copy()
     # r_d_array = np.array([[r[0] + px, r[1] + py, r[2] + pz]])
-    ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
-    q = ctr.minimize(initial_q, q,)
+    # ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
+    (r1, r2, r3, _) = ctr.minimize(initial_q, q)
     # print(q_diff)
     print("####################")
     # print(r1[-1, :])
@@ -322,7 +322,7 @@ def update_plot():
 
 
 # 定义步进大小
-step_size = 0.01
+step_size = 0
 
 r = [0, 0, 0]
 
@@ -330,47 +330,48 @@ r = [0, 0, 0]
 # 按钮回调函数
 def update_px_plus(event):
     global px, py, pz
-    px, py, pz = 0., 0., 0.
-    px = step_size
+    # px, py, pz = 0., 0., 0.
+    px += step_size
     update_plot()
 
 
 def update_px_minus(event):
     global px, py, pz
-    px, py, pz = 0., 0., 0.
-    px = -step_size
+    # px, py, pz = 0., 0., 0.
+    px += -step_size
     update_plot()
 
 
 def update_py_plus(event):
     global px, py, pz
-    px, py, pz = 0., 0., 0.
-    py = step_size
+    # px, py, pz = 0., 0., 0.
+    py += step_size
     update_plot()
 
 
 def update_py_minus(event):
     global px, py, pz
-    px, py, pz = 0., 0., 0.
-    py = -step_size
+    # px, py, pz = 0., 0., 0.
+    py += -step_size
     update_plot()
 
 
 def update_pz_plus(event):
     global px, py, pz
-    px, py, pz = 0., 0., 0.
-    pz = step_size
+    # px, py, pz = 0., 0., 0.
+    pz += step_size
     update_plot()
 
 
 def update_pz_minus(event):
     global px, py, pz
-    px, py, pz = 0., 0., 0.
-    pz = -step_size
+    # px, py, pz = 0., 0., 0.
+    pz += -step_size
     update_plot()
 
 
 px, py, pz = 0., -0.048334, 0.384446
+
 uz_0 = np.array([0, 0, 0], dtype=float)
 # # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
 q = np.array([0, 0, 0, 0, 0, 0], dtype="float")

@@ -255,25 +255,28 @@ def update_plot():
     ax.set_zlabel('Z [mm]')
 
     # q is defined within the loop below
-
+    q[3:] = theta
     (r1, r2, r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
-    jac = np.zeros((3, 12))
+    jac = np.zeros((3, 9))
     r = r1[-1, :].copy()
     eps = 1.e-4
     for i in range(0, 3):
         q[i] = q[i] + eps
+
         (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), )
         r_perturb = (new_r1[-1, :] - r) / eps
         jac[:, i] = r_perturb.reshape(3, )
         q[i] = q[i] - eps
     for i in range(3, 6):
         U[i - 3] = U[i - 3] + eps
+
         (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), )
         r_perturb = (new_r1[-1, :] - r) / eps
         jac[:, i] = r_perturb.reshape(3, )
         U[i - 3] = U[i - 3] - eps
     for i in range(6, 9):
         theta[i - 6] = theta[i - 6] + eps
+
         (new_r1, new_r2, new_r3, _) = ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta), )
         r_perturb = (new_r1[-1, :] - r) / eps
         jac[:, i] = r_perturb.reshape(3, )

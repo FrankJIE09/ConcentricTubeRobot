@@ -338,21 +338,17 @@ top = pos.y0 + 0.6
 a = 0.03
 left = pos.x0 + 0.4
 # Create sliders
-U_slider1 = Slider(plt.axes([left, top - 1 * a, slider_width, slider_height]), 'U1', 0, 100, valinit=0)
-U_slider2 = Slider(plt.axes([left, top - 2 * a, slider_width, slider_height]), 'U2', 0, 100, valinit=0)
-U_slider3 = Slider(plt.axes([left, top - 3 * a, slider_width, slider_height]), 'U3', 0, 100, valinit=0)
+U_slider1 = Slider(plt.axes([left, top - 1 * a, slider_width, slider_height]), 'Tube1Curvature', 0, 100, valinit=0)
+U_slider2 = Slider(plt.axes([left, top - 2 * a, slider_width, slider_height]), 'Tube2Curvature', 0, 100, valinit=0)
+U_slider3 = Slider(plt.axes([left, top - 3 * a, slider_width, slider_height]), 'Tube3Curvature', 0, 100, valinit=0)
 
-theta_slider1 = Slider(plt.axes([left, top - 4 * a, slider_width, slider_height]), 'theta1', 0, 2 * np.pi, valinit=0)
-theta_slider2 = Slider(plt.axes([left, top - 5 * a, slider_width, slider_height]), 'theta2', 0, 2 * np.pi, valinit=0)
-theta_slider3 = Slider(plt.axes([left, top - 6 * a, slider_width, slider_height]), 'theta3', 0, 2 * np.pi, valinit=0)
+theta_slider1 = Slider(plt.axes([left, top - 4 * a, slider_width, slider_height]), 'Tube1Rz', 0, 2 * np.pi, valinit=0)
+theta_slider2 = Slider(plt.axes([left, top - 5 * a, slider_width, slider_height]), 'Tube2Rz', 0, 2 * np.pi, valinit=0)
+theta_slider3 = Slider(plt.axes([left, top - 6 * a, slider_width, slider_height]), 'Tube3Rz', 0, 2 * np.pi, valinit=0)
 
-q_slider1 = Slider(plt.axes([left, top - 7 * a, slider_width, slider_height]), 'q1', 0, 30, valinit=0)
-q_slider2 = Slider(plt.axes([left, top - 8 * a, slider_width, slider_height]), 'q2', 0, 30, valinit=0)
-q_slider3 = Slider(plt.axes([left, top - 9 * a, slider_width, slider_height]), 'q3', 0, 30, valinit=0)
-
-uz_slider1 = Slider(plt.axes([left, top - 13 * a, slider_width, slider_height]), 'uz1', 0, np.pi * 2, valinit=0)
-uz_slider2 = Slider(plt.axes([left, top - 14 * a, slider_width, slider_height]), 'uz2', 0, np.pi * 2, valinit=0)
-uz_slider3 = Slider(plt.axes([left, top - 15 * a, slider_width, slider_height]), 'uz3', 0, np.pi * 2, valinit=0)
+q_slider1 = Slider(plt.axes([left, top - 7 * a, slider_width, slider_height]), 'Tube1MoveLength', 0, 300, valinit=0)
+q_slider2 = Slider(plt.axes([left, top - 8 * a, slider_width, slider_height]), 'Tube2MoveLength', 0, 300, valinit=0)
+q_slider3 = Slider(plt.axes([left, top - 9 * a, slider_width, slider_height]), 'Tube3MoveLength', 0, 300, valinit=0)
 
 # Attach update function to sliders
 U_slider1.on_changed(update_plot)
