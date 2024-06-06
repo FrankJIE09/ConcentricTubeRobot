@@ -43,7 +43,7 @@ Model based on [A geometrically exact model for externally loaded concentric-tub
 
 1. Clone the repo.
 
-> git clone https://github.com/izzatnadzmi/ConcentricTubeRobot.git
+> git clone https://github.com/FrankJIE09/ConcentricTubeRobot.git
 
 > cd ConcentricTubeRobot/
 
