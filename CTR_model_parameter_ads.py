@@ -337,6 +337,7 @@ slider_height = 0.02
 top = pos.y0 + 0.6
 a = 0.03
 left = pos.x0 + 0.4
+
 # Create sliders
 U_slider1 = Slider(plt.axes([left, top - 1 * a, slider_width, slider_height]), 'Tube1Curvature', 0, 100, valinit=0)
 U_slider2 = Slider(plt.axes([left, top - 2 * a, slider_width, slider_height]), 'Tube2Curvature', 0, 100, valinit=0)

@@ -22,7 +22,7 @@ class CTRobotModel(object):
         self.tubes_length = np.array(tubes_length)  # length of tubes
         self.curve_length = np.array(curve_length)  # length of the curved part of tubes
         self.q_0 = np.array(initial_q)  # [BBBaaa]
-        self.x_d = np.array([-0.01, -0.03190973, 0.3805521])
+        self.x_d = np.array([-0.1, -0.03190973, 0.3805521])
         # print(np.array([px, py, pz]))
         # self.accuracy = Tol
 
@@ -43,14 +43,14 @@ class CTRobotModel(object):
         # self.Uy = np.array(Uy)
         q = np.array(q)
         uz_0 = np.zeros(3)
-        self.Ux = self.init_U * np.cos(q[3:])
-        self.Uy = self.init_U * np.sin(q[3:])
+        self.Ux = q[6:9] * np.cos(q[3:6])
+        self.Uy = q[6:9] * np.sin(q[3:6])
         # q1 to q3 are robot base movments, q3 to q6 are robot base rotation angles.
         uz0 = uz_0.copy()  # TODO: uz_0 column check
         B = q[:self.n] + self.q_0[:self.n]  # length of tubes before template
 
         # initial angles
-        alpha = (q[-self.n:] + self.q_0[-self.n:]) - B * uz0  # .transpose()  TODO????
+        alpha = (q[3:6] + self.q_0[-self.n:]) - B * uz0  # .transpose()  TODO????
         # alpha = alpha.flatten()  # vectorise. check again  TODO
         alpha_1 = alpha[0].copy()
 
@@ -219,6 +219,8 @@ class CTRobotModel(object):
             a = np.argmin(np.abs(index - i + 1))  # find where tube begins  # find "i+1" by making it "0"
             b = np.argmin(np.abs(index - (1 * self.n + i + 1)))  # find where tube curve starts
             c = np.argmin(np.abs(index - (2 * self.n + i + 1)))  # find where tube ends
+            if a == 9:
+                return
             if L[a] == 0:
                 a = a + 1
             if L[b] == 0:
@@ -246,16 +248,19 @@ class CTRobotModel(object):
     # 解决MPC问题
     # 估算成本函数的雅可比矩阵
     def cost(self, q):
+        global px, py, pz
         self.moving_CTR(q, )
-        Error = 1000 * (self.r[-1, :].reshape(3, 1) - self.x_d.reshape(3, 1))
+        Error = 1000 * (self.r[-1, :].reshape(3, 1) - np.array([px, py, pz]).reshape(3, 1))
+        print(px, py, pz)
+        # 1000 * (self.r[-1, :].reshape(3, 1) - self.x_d.reshape(3, 1))
         C = np.sum((Error.T @ Error), axis=0)
         return C
 
     def jac(self, q):
         self.eps = 1e-4
-        jac = np.zeros((6,))
+        jac = np.zeros((9,))
         r = self.cost(q)
-        for i in range(0, 6):
+        for i in range(0, 9):
             q[i] = q[i] + self.eps
             r_perturb = (self.cost(q) - r) / self.eps
             jac[i] = r_perturb.reshape(1, )
@@ -263,14 +268,8 @@ class CTRobotModel(object):
         return jac
 
     def minimize(self, q_init, q):
-        eps = 0.0001
-        # 限制条件
+               # 限制条件
         ineq_cons = {'type': 'ineq',
-                     'fun': lambda q: np.array([-q[0] - q_init[0] - eps,
-                                                -q[1] - q_init[1] - eps,
-                                                q[0] + q_init[0] + 0.4 - eps,
-                                                q[1] + q_init[1] + 0.3,
-                                                q_init[1] - q_init[0] - eps - q[0] + q[1]]),
                      'jac': lambda q: np.array([[-1.0, 0, 0, 0],
                                                 [0, -1.0, 0, 0],
                                                 [1.0, 0.0, 0, 0],
@@ -278,10 +277,21 @@ class CTRobotModel(object):
                                                 [-1.0, 1.0, 0, 0]])}
         # r = r1[-1, :].copy()
         # r_d_array = np.array([[r[0] + px, r[1] + py, r[2] + pz]])
-        res = minimize(self.cost, q, method='SLSQP', jac=self.jac,
+        bounds = [
+            (-50*1e-3, 50*1e-3),
+            (-50*1e-3, 50*1e-3),
+            (-50*1e-3, 50*1e-3),
+            (-np.pi, np.pi),
+            (-np.pi, np.pi),
+            (-np.pi, np.pi),
+            (0, 100),
+            (0, 100),
+            (0, 100),
+        ]
+        res = minimize(self.cost, q, method='SLSQP', jac=self.jac,bounds=bounds,
                        options={'ftol': 0.75e-3})
         if res.success:
-            return self.moving_CTR(res.x)
+            return self.moving_CTR(res.x),res.x
 
 
 def update_plot():
@@ -303,7 +313,8 @@ def update_plot():
     # r = r1[-1, :].copy()
     # r_d_array = np.array([[r[0] + px, r[1] + py, r[2] + pz]])
     # ctr.moving_CTR(q, uz_0, U * np.cos(theta), U * np.sin(theta))
-    (r1, r2, r3, _) = ctr.minimize(initial_q, q)
+    (r1, r2, r3, _),q = ctr.minimize(initial_q, q)
+    # q =
     # print(q_diff)
     print("####################")
     # print(r1[-1, :])
@@ -322,7 +333,7 @@ def update_plot():
 
 
 # 定义步进大小
-step_size = 0
+step_size = 0.01
 
 r = [0, 0, 0]
 
@@ -370,11 +381,11 @@ def update_pz_minus(event):
     update_plot()
 
 
-px, py, pz = 0., -0.048334, 0.384446
+px, py, pz = 0., -0.03190973, 0.3805521
 
 uz_0 = np.array([0, 0, 0], dtype=float)
 # # q = np.array([0, -3, -3, 0, 0, 0])  #inputs [BBBaaa]
-q = np.array([0, 0, 0, 0, 0, 0], dtype="float")
+q = np.array([0, 0, 0, 0, 0, 0, 20, 15, 3], dtype="float")
 # no_of_tubes = 3  # ONLY MADE FOR 3 TUBES for now
 initial_q = [-0.950, -0.85, -0.51, 0, 0, 0]
 tubes_length = [1350, 1200, 810]
