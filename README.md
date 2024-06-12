@@ -54,7 +54,12 @@ Model based on [A geometrically exact model for externally loaded concentric-tub
 ## Demo Video
 
 Check out this demonstration video to see the three-tube concentric tube continuum robot model in action:
-[![Video]](https://www.bilibili.com/video/BV1eM4m1U7eC/)
+
+ [Demo1 Forward Kinematics](https://www.bilibili.com/video/BV1hm421L78c/)
+
+ [Demo2 Inverse Kinematics with Jacobian](https://www.bilibili.com/video/BV1gi421i7Ta/)
+
+ [Demo3 Inverse Kinematics with MPC](https://www.bilibili.com/video/BV1eM4m1U7eC/)
 
 ## License
 
