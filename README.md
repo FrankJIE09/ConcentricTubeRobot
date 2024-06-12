@@ -54,8 +54,7 @@ Model based on [A geometrically exact model for externally loaded concentric-tub
 ## Demo Video
 
 Check out this demonstration video to see the three-tube concentric tube continuum robot model in action:
-
-[![Watch the Demo Video](https://img.youtube.com/vi/BV1eM4m1U7eC/0.jpg)](https://www.bilibili.com/video/BV1eM4m1U7eC/)
+[![Video]](https://www.bilibili.com/video/BV1eM4m1U7eC/)
 
 ## License
 
